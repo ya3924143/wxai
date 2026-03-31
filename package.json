@@ -1,0 +1,45 @@
+{
+  "name": "wxai",
+  "version": "0.1.0",
+  "description": "WeChat AI Bot — Connect your WeChat to any AI with one scan",
+  "type": "module",
+  "bin": {
+    "wxai": "./bin/wxai.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch server/index.ts",
+    "dev:ui": "cd ui && npm run dev",
+    "build": "cd ui && npm run build",
+    "start": "node --import tsx server/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "author": "",
+  "license": "MIT",
+  "keywords": [
+    "wechat",
+    "ai",
+    "chatbot",
+    "claude",
+    "openai"
+  ],
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.0.0",
+    "commander": "^13.1.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.8.4",
+    "node-cron": "^4.2.1",
+    "qrcode-terminal": "^0.12.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}
