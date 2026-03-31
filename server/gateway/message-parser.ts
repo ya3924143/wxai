@@ -18,6 +18,14 @@ async function downloadAndDecryptImage(
   accountToken: string,
 ): Promise<string | undefined> {
   try {
+    // 域名白名单校验，防止 token 泄露到非预期服务器
+    const CDN_ALLOWED_HOSTS = ["ilinkai.weixin.qq.com", "res.wx.qq.com"];
+    const cdnHost = new URL(cdnUrl).hostname;
+    if (!CDN_ALLOWED_HOSTS.includes(cdnHost)) {
+      process.stderr.write(`[message-parser] 拒绝非白名单 CDN: ${cdnHost}\n`);
+      return undefined;
+    }
+
     const res = await fetch(cdnUrl, {
       headers: { Authorization: `Bearer ${accountToken}` },
       signal: AbortSignal.timeout(15_000),

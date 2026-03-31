@@ -38,7 +38,15 @@ async function main(): Promise<void> {
   const app = Fastify({ logger: true });
 
   await app.register(fastifyCookie);
-  await app.register(fastifyCors, { origin: true, credentials: true });
+  // CORS：仅允许同源和本地开发端口
+  const allowedOrigins = [
+    `http://${config.host}:${config.port}`,
+    `http://127.0.0.1:${config.port}`,
+    `http://localhost:${config.port}`,
+    "http://127.0.0.1:3801",  // Vite dev server
+    "http://localhost:3801",
+  ];
+  await app.register(fastifyCors, { origin: allowedOrigins, credentials: true });
   app.setErrorHandler(errorHandler);
 
   // 认证
