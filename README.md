@@ -1,271 +1,215 @@
-<p align="center">
-  <img src="ui/public/favicon.svg" width="80" height="80" alt="wxai logo" />
-</p>
+# wxai
 
-<h1 align="center">wxai</h1>
+> 本文档基于代码生成，最后更新：2026-04-04
 
-<p align="center">
-  <strong>WeChat AI Bot</strong> — Connect your WeChat to any AI with one scan.
-</p>
-
-<p align="center">
-  <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#ai-providers">AI Providers</a> &bull;
-  <a href="docs/ai-providers.md">Provider Dev Guide</a> &bull;
-  <a href="docs/plugin-development.md">Plugin Dev Guide</a> &bull;
-  <a href="#web-ui">Web UI</a>
-</p>
+**WeChat AI Bot** — 扫码登录微信，接入任意 AI 后端，让微信变成 AI 助手。
 
 ---
 
-wxai is a **self-hosted** WeChat messaging gateway that bridges your WeChat account with any AI backend. Scan a QR code in your terminal, point it at Claude / GPT / DeepSeek / your local model, and your WeChat becomes an AI assistant.
+## 项目简介
 
-## Why wxai?
+wxai 是一个自托管的微信消息网关。通过 iLink Bot API 接收微信消息，转发给 AI Provider 处理后回复。无需微信公众号审批，使用个人微信号扫码即可接入。
 
-- **Zero vendor lock-in** — Swap AI providers by changing one env variable
-- **One-scan setup** — Terminal or Web UI QR code login, no WeChat API approval needed
-- **Single process** — No microservices, no databases. One `npm start` and you're live
-- **Extensible** — Plugin system with cron schedules, or build your own AI provider in ~100 lines
+核心特点：
+- 零厂商锁定：切换 AI 只需改一个环境变量
+- 单进程、无数据库：所有状态以 JSON 文件存储在 `~/.wxai/`
+- 插件系统：支持关键词触发和定时任务
+- Web 管理界面：React 19 + Tailwind CSS 4，含暗色模式
 
-## Features
+---
 
-| Category | Details |
-|----------|---------|
-| **Gateway** | iLink Bot polling, 3s message debounce, auto keepalive |
-| **AI** | Provider abstraction, session management, token rotation (60k/80k), background summarization, priority queue with 429 retry |
-| **Chat** | Smart model routing (powerful/balanced/fast based on message content), multi-turn context, image support |
-| **Plugins** | Keyword triggers + cron schedules, full AI access in plugin context |
-| **Management** | Per-user permission control, usage tracking |
-| **UI** | Web dashboard (React 19 + Tailwind CSS 4) with dark mode, CLI tool with terminal QR code |
-
-## Quick Start
+## 快速开始
 
 ```bash
-# 1. Clone
-git clone https://github.com/ya3924143/wxai.git
+# 1. 克隆并安装依赖
+git clone <repo-url>
 cd wxai
-
-# 2. Install
 npm install
 cd ui && npm install && cd ..
 
-# 3. Configure
+# 2. 配置环境变量
 cp .env.example .env
-# Edit .env → set WXAI_API_KEY to any secret string
+# 编辑 .env，至少设置 WXAI_API_KEY
 
-# 4. Build Web UI
+# 3. 构建 Web UI
 npm run build
 
-# 5. Login via terminal QR code
+# 4. 扫码登录微信
 npx wxai login
 
-# 6. Start
-npx wxai start          # foreground
-npx wxai start -d       # PM2 daemon mode
+# 5. 启动服务
+npx wxai start          # 前台运行
+npx wxai start -d       # PM2 守护进程模式
 
-# 7. Open Web UI
+# 6. 打开管理界面
 open http://127.0.0.1:3800
 ```
 
-## Architecture
+---
 
-```
-                         ┌──────────────────────────────────────┐
-  WeChat Users           │            wxai (:3800)              │
-       │                 │                                      │
-       ▼                 │  ┌─────────┐    ┌──────────┐        │
-  iLink Bot API ────────▶│  │ Gateway │───▶│ Chatbot  │        │
-                         │  │ polling │    │ commands │        │
-                         │  │ debounce│    │ plugins  │        │
-                         │  │ keepalve│    │ routing  │        │
-                         │  └─────────┘    └────┬─────┘        │
-                         │                      │              │
-                         │               ┌──────▼──────┐       │
-                         │               │ AI Provider │       │
-                         │               │ ┌─────────┐ │       │
-                         │               │ │Claude CLI│ │       │
-                         │               │ ├─────────┤ │       │
-                         │               │ │Anthropic│ │       │
-                         │               │ ├─────────┤ │       │
-                         │               │ │ OpenAI  │ │       │
-                         │               │ └─────────┘ │       │
-                         │               └─────────────┘       │
-                         │                                      │
-                         │  ┌─────────┐    ┌──────────┐        │
-                         │  │  Store  │    │  Web UI  │        │
-                         │  │  JSON   │    │React+TW4 │        │
-                         │  └─────────┘    └──────────┘        │
-                         └──────────────────────────────────────┘
-```
+## 环境变量
 
-Single process. No database — all state in `~/.wxai/*.json`.
+所有可配置项见 `.env.example`，关键变量：
 
-## AI Providers
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `WXAI_API_KEY` | 是 | Web UI 认证密钥及 API Bearer Token |
+| `WXAI_PASSWORD` | 否 | Web UI 登录密码，默认同 `WXAI_API_KEY` |
+| `WXAI_PORT` | 否 | HTTP 服务端口，默认 `3800` |
+| `WXAI_HOST` | 否 | 监听地址，默认 `127.0.0.1` |
+| `WXAI_AI_PROVIDER` | 否 | AI Provider 类型，默认 `claude-cli` |
+| `WXAI_MAX_CONCURRENT` | 否 | 最大并发 AI 请求数，默认 `6` |
 
-wxai uses an **`AiProvider` interface** — implement 4 methods and your AI is in.
+---
 
-### Built-in: Claude CLI (default)
-
-Uses your locally installed [Claude Code](https://claude.ai/claude-code) CLI. **No API key needed** — it piggybacks on your logged-in Claude account.
-
-```env
-WXAI_AI_PROVIDER=claude-cli
-```
-
-### Build Your Own Provider
-
-See **[docs/ai-providers.md](docs/ai-providers.md)** for the full guide. Here's the minimal interface:
-
-```typescript
-interface AiProvider {
-  readonly id: string;
-  readonly name: string;
-  chat(content: string, options?: ChatOptions): Promise<AiResponse>;
-  sessionSend(userId: string, content: string, options?: SessionOptions): Promise<AiResponse>;
-  clearSession(userId: string): Promise<void>;
-  healthCheck(): Promise<boolean>;
-}
-```
-
-Three model tiers: `"fast"` / `"balanced"` / `"powerful"` — map them to whatever models your backend offers.
-
-### Planned Providers
-
-| Provider | Env Config | Status |
-|----------|-----------|--------|
-| Claude CLI | `WXAI_AI_PROVIDER=claude-cli` | ✅ Built-in |
-| Anthropic API | `WXAI_AI_PROVIDER=anthropic-api` | 🔜 Planned |
-| OpenAI Compatible | `WXAI_AI_PROVIDER=openai-compat` | 🔜 Planned |
-
-> Want to add a provider? See [docs/ai-providers.md](docs/ai-providers.md) — PRs welcome!
-
-## Plugin System
-
-Plugins extend wxai with custom commands and scheduled tasks.
-
-```typescript
-import type { WxaiPlugin } from "./server/plugins/types.js";
-
-export const weatherPlugin: WxaiPlugin = {
-  id: "weather",
-  name: "Weather",
-  description: "Check weather by city name",
-  triggers: ["#weather", "#天气"],
-  schedule: { cron: "0 8 * * *", label: "Daily morning weather" }, // optional
-
-  async execute(ctx) {
-    // ctx.ai — full AI provider access
-    // ctx.reply(msg) — send WeChat message back
-    // ctx.args — text after the trigger keyword
-    const answer = await ctx.ai.chat(`What's the weather in ${ctx.args}?`);
-    await ctx.reply(answer.text);
-    return { handled: true };
-  },
-};
-```
-
-Register in `server/index.ts`:
-```typescript
-registerPlugin(weatherPlugin);
-```
-
-See **[docs/plugin-development.md](docs/plugin-development.md)** for the full guide.
-
-## CLI
+## CLI 命令
 
 ```bash
-wxai login         # Terminal QR code scan
-wxai accounts      # List WeChat accounts
-wxai start         # Start server (foreground)
-wxai start -d      # Start with PM2 daemon
-wxai stop          # Stop PM2 process
-wxai status        # Check PM2 status
+wxai login        # 终端显示二维码，扫码登录微信
+wxai accounts     # 列出所有已登录的微信账号
+wxai start        # 启动服务（前台）
+wxai start -d     # 启动服务（PM2 守护进程）
+wxai stop         # 停止 PM2 进程
+wxai status       # 查看 PM2 运行状态
 ```
 
-## Web UI
+---
 
-6-page management dashboard at `http://127.0.0.1:3800`:
+## 微信指令
 
-| Page | What it does |
-|------|-------------|
-| **Dashboard** | Account status cards, online/offline stats, AI health |
-| **Users** | WeChat user list + permission management (allow/block) |
-| **AI Config** | Current provider status, configuration guide |
-| **Plugins** | Registered plugins, trigger keywords, schedules |
-| **Send Test** | Pick a user and send test messages |
-| **QR Login** | Scan QR code to add new WeChat accounts |
+登录后，在微信中向 Bot 发送以下指令：
 
-Full dark mode support. Mobile responsive.
+| 指令 | 说明 |
+|------|------|
+| `#帮助` / `#help` | 查看所有可用指令 |
+| `#用量` | 查看本人 AI 用量统计 |
+| `#清除` | 清除多轮对话上下文 |
+| `#订阅 <插件名>` | 订阅插件推送 |
+| `#退订 <插件名>` | 退订插件推送 |
+| `#echo <文字>` | 内置 echo 插件（测试用） |
+| 其他文字/图片 | 进入 AI 多轮对话 |
 
-## Environment Variables
+---
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `WXAI_API_KEY` | **Yes** | — | Secret key for Web UI auth and API calls |
-| `WXAI_PASSWORD` | No | same as API key | Separate Web UI password |
-| `WXAI_PORT` | No | `3800` | HTTP server port |
-| `WXAI_HOST` | No | `127.0.0.1` | HTTP server host |
-| `WXAI_AI_PROVIDER` | No | `claude-cli` | AI provider type |
-| `WXAI_MAX_CONCURRENT` | No | `6` | Max concurrent AI requests |
+## Web 管理界面
 
-## Data Storage
+服务启动后访问 `http://127.0.0.1:3800`（端口见配置），包含以下页面：
 
-All data lives in `~/.wxai/` as plain JSON files:
+| 页面 | 功能 |
+|------|------|
+| Dashboard | 账号状态总览、在线/离线统计、AI 健康状态 |
+| Users | 微信用户列表、权限管理（允许/封禁） |
+| AI Config | 当前 Provider 状态和配置指引 |
+| Plugins | 已注册插件、触发词、定时计划 |
+| Send Test | 手动向指定用户发送测试消息 |
+| QR Login | 扫码添加新的微信账号 |
 
-```
-~/.wxai/
-├── config.json              # Runtime config
-├── accounts.json            # WeChat bot accounts
-├── users.json               # User permissions & subscriptions
-├── usage.json               # AI usage tracking
-├── context-tokens/          # Per-account context tokens
-│   ├── <prefix>.json
-│   └── global.json
-└── sync-bufs/               # Polling cursors
-    └── <prefix>.txt
-```
+---
 
-## Tech Stack
-
-| Layer | Tech |
-|-------|------|
-| Backend | Node.js ESM + [Fastify 5](https://fastify.dev) + TypeScript + [Zod](https://zod.dev) |
-| Frontend | [React 19](https://react.dev) + [Tailwind CSS 4](https://tailwindcss.com) + [Vite 8](https://vite.dev) |
-| Data | JSON file persistence (no database) |
-| Process | [PM2](https://pm2.keymetrics.io) |
-| Test | [Vitest](https://vitest.dev) |
-
-## Project Structure
+## 项目结构
 
 ```
 wxai/
-├── bin/                    # CLI tool (wxai login/start/stop)
-├── server/
-│   ├── ai/                 # AI provider abstraction
-│   │   ├── types.ts        # AiProvider interface
-│   │   ├── providers/      # Provider implementations
-│   │   ├── session-manager # Multi-turn session with token rotation
-│   │   └── request-queue   # Priority queue with 429 retry
-│   ├── chatbot/            # Message handling & command parsing
-│   ├── gateway/            # iLink polling, keepalive, message parser
-│   ├── plugins/            # Plugin system (interface + loader + scheduler)
-│   ├── store/              # JSON file persistence
-│   ├── routes/             # Fastify HTTP API routes
-│   └── middleware/         # Auth & error handling
-├── ui/                     # React Web UI
-│   └── src/pages/          # Dashboard, Users, AiConfig, Plugins, etc.
-├── docs/                   # Developer documentation
-└── examples/               # Example plugins
+├── bin/                        # CLI 入口
+│   ├── wxai.ts                 # CLI 主程序（commander）
+│   └── commands/               # login / accounts / service
+├── server/                     # 后端服务
+│   ├── index.ts                # 服务启动入口
+│   ├── config.ts               # 配置加载与路径常量
+│   ├── types.ts                # 全局类型定义
+│   ├── ai/                     # AI 抽象层
+│   │   ├── types.ts            # AiProvider 接口定义
+│   │   ├── provider-factory.ts # Provider 工厂
+│   │   ├── providers/          # Provider 实现（claude-cli 等）
+│   │   ├── session-manager.ts  # 多轮会话 + Token 轮转
+│   │   ├── request-queue.ts    # 优先级队列 + 429 重试
+│   │   └── usage-tracker.ts    # 用量统计
+│   ├── chatbot/                # 消息处理
+│   │   ├── handler.ts          # 消息分发主逻辑
+│   │   ├── command-parser.ts   # 指令解析
+│   │   ├── chat-router.ts      # 模型路由（fast/balanced/powerful）
+│   │   └── help.ts             # 帮助文本
+│   ├── gateway/                # iLink Bot 接入层
+│   │   ├── ilink-client.ts     # HTTP 客户端（无状态）
+│   │   ├── poller.ts           # 消息轮询 + 防抖分发
+│   │   ├── message-parser.ts   # 消息格式解析
+│   │   └── keepalive.ts        # 连接保活
+│   ├── plugins/                # 插件系统
+│   │   ├── types.ts            # WxaiPlugin 接口
+│   │   ├── loader.ts           # 插件注册与匹配
+│   │   ├── scheduler.ts        # 定时任务调度
+│   │   └── builtin/            # 内置插件（echo 等）
+│   ├── store/                  # JSON 文件持久化
+│   │   ├── json-file.ts        # 底层读写工具
+│   │   ├── account-store.ts    # 账号数据
+│   │   ├── user-store.ts       # 用户权限
+│   │   └── context-store.ts    # context token 缓存
+│   ├── routes/                 # Fastify HTTP 路由
+│   │   ├── accounts.ts         # /api/accounts/*
+│   │   ├── users.ts            # /api/manage/users/*
+│   │   ├── send.ts             # /api/send
+│   │   ├── plugins.ts          # /api/plugins
+│   │   └── health.ts           # /api/health
+│   └── middleware/             # 中间件
+│       ├── auth.ts             # API Key + Session Cookie 认证
+│       └── error-handler.ts    # 统一错误处理
+├── ui/                         # React Web UI
+│   └── src/
+│       ├── pages/              # Dashboard / Users / AiConfig / Plugins / SendTest / QrLogin
+│       ├── components/         # Layout / StatusBadge
+│       ├── lib/                # api.ts（HTTP 客户端）/ types.ts
+│       └── hooks/              # useDarkMode
+├── examples/                   # 插件示例
+├── docs/                       # 开发者文档
+│   ├── ARCHITECTURE.md         # 系统架构详解
+│   └── OPERATIONS.md           # 部署与运维手册
+├── ecosystem.config.cjs        # PM2 配置
+├── tsconfig.json               # TypeScript 配置
+└── package.json
 ```
 
-## Contributing
+---
 
-PRs welcome! The most impactful contributions right now:
+## 数据存储
 
-1. **New AI providers** — Anthropic API, OpenAI, Ollama, etc. See [docs/ai-providers.md](docs/ai-providers.md)
-2. **Plugins** — Useful plugins for the community
-3. **Tests** — Unit and integration tests
-4. **Docs** — Translations, tutorials
+所有运行时数据存储在 `~/.wxai/`：
+
+```
+~/.wxai/
+├── config.json              # 运行时配置
+├── accounts.json            # 微信 Bot 账号列表
+├── users.json               # 用户权限与订阅
+├── usage.json               # AI 用量统计
+├── workspaces/              # Claude CLI 隔离工作目录（按 userId）
+├── context-tokens/          # 各账号的 context token 缓存
+│   ├── <prefix>.json
+│   └── global.json
+└── sync-bufs/               # 轮询游标（断点续传）
+    └── <prefix>.txt
+```
+
+---
+
+## 开发
+
+```bash
+# 后端热更新
+npm run dev
+
+# 前端 Vite 开发服务器
+npm run dev:ui
+
+# 运行测试
+npm test
+
+# 构建生产 UI
+npm run build
+```
+
+详细架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。  
+部署与运维手册见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
+
+---
 
 ## License
 
